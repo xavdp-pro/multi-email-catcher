@@ -54,12 +54,13 @@ async function newPage(extraContextOpts = {}) {
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
     viewport: { width: 1280, height: 720 },
     locale: 'fr-FR',
+    ignoreHTTPSErrors: true,
     extraHTTPHeaders: { 'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7' },
     ...extraContextOpts,
   });
   const page = await ctx.newPage();
   // Cleanup helper: closes page + context
-  page._cleanup = async () => { try { await ctx.close(); } catch (_) {} };
+  page._cleanup = async () => { try { await ctx.close(); } catch (_) { } };
   return page;
 }
 
@@ -70,7 +71,7 @@ async function cmdBing(query) {
     const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}&setlang=fr&cc=FR`;
     log('bing:', query);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForSelector('.b_algo', { timeout: 20000 }).catch(() => {});
+    await page.waitForSelector('.b_algo', { timeout: 20000 }).catch(() => { });
     await sleep(1200);
 
     return await page.evaluate(() => {
@@ -87,7 +88,7 @@ async function cmdBing(query) {
           try {
             const b64 = uParam[1].replace(/-/g, '+').replace(/_/g, '/');
             url = atob(b64 + '==='.slice((b64.length + 3) % 4));
-          } catch (_) {}
+          } catch (_) { }
         }
         if (!url || !url.startsWith('http')) {
           const cite = c.querySelector('cite');
@@ -129,7 +130,7 @@ async function acceptGoogleConsent(page) {
         await sleep(800);
         return;
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 }
 
@@ -140,7 +141,7 @@ async function cmdGoogle(query) {
     log('google:', query);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await acceptGoogleConsent(page);
-    await page.waitForSelector('div#search, div#rso, #rcnt', { timeout: 15000 }).catch(() => {});
+    await page.waitForSelector('div#search, div#rso, #rcnt', { timeout: 15000 }).catch(() => { });
     await sleep(400);
 
     return await page.evaluate(() => {
@@ -195,7 +196,7 @@ async function cmdMaps(query) {
           await sleep(1500);
           break;
         }
-      } catch (_) {}
+      } catch (_) { }
     }
 
     await sleep(3500);
@@ -204,14 +205,14 @@ async function cmdMaps(query) {
       const auth = document.querySelector('a[data-item-id="authority"]');
       if (auth && auth.href && !auth.href.includes('google.com')) {
         if (auth.href.includes('url?q=')) {
-          try { return new URL(auth.href).searchParams.get('q'); } catch (_) {}
+          try { return new URL(auth.href).searchParams.get('q'); } catch (_) { }
         }
         return auth.href;
       }
       for (const a of document.querySelectorAll('a[href]')) {
         const label = (a.getAttribute('aria-label') || '').toLowerCase();
-        const text  = (a.innerText || '').toLowerCase().trim();
-        const href  = a.href || '';
+        const text = (a.innerText || '').toLowerCase().trim();
+        const href = a.href || '';
         const isWeb =
           label.includes('site web') || label.includes('website') || label.includes('sitio web') ||
           label.includes('site internet') || label.includes('webseite') ||
@@ -219,7 +220,7 @@ async function cmdMaps(query) {
         if (!isWeb) continue;
         if (href.includes('google.com') || href.includes('google.fr')) continue;
         if (href.includes('url?q=')) {
-          try { return new URL(href).searchParams.get('q'); } catch (_) {}
+          try { return new URL(href).searchParams.get('q'); } catch (_) { }
         }
         if (href.startsWith('http')) return href;
       }
@@ -277,10 +278,10 @@ async function handleCommand(raw) {
 
   try {
     let result;
-    if      (cmd === 'bing')   result = await cmdBing(req.query);
+    if (cmd === 'bing') result = await cmdBing(req.query);
     else if (cmd === 'google') result = await cmdGoogle(req.query);
-    else if (cmd === 'maps')   result = await cmdMaps(req.query);
-    else if (cmd === 'html')   result = await cmdHtml(req.url);
+    else if (cmd === 'maps') result = await cmdMaps(req.query);
+    else if (cmd === 'html') result = await cmdHtml(req.url);
     else throw new Error('Unknown command: ' + cmd);
 
     send({ id, ok: true, result });
@@ -296,7 +297,7 @@ function send(obj) {
 
 async function shutdown() {
   log('Shutting down...');
-  try { if (browser) await browser.close(); } catch (_) {}
+  try { if (browser) await browser.close(); } catch (_) { }
   process.exit(0);
 }
 
