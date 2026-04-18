@@ -5,6 +5,7 @@ import sys
 import json
 import time
 import random
+import subprocess
 import threading
 import unicodedata
 import requests
@@ -604,11 +605,17 @@ def _connect_sheet():
 
 
 def _find_or_create_col(ws, header: str) -> int:
-    """Return 1-based column index of *header*, creating it if absent."""
+    """Return 1-based column index of *header*, creating it if absent.
+
+    The sheet grid is automatically widened when a new column is appended,
+    otherwise gspread raises `APIError: Range ... exceeds grid limits`.
+    """
     headers = ws.row_values(1)
     if header in headers:
         return headers.index(header) + 1
     new_col = len(headers) + 1
+    if new_col > ws.col_count:
+        ws.add_cols(new_col - ws.col_count)
     ws.update_cell(1, new_col, header)
     return new_col
 
@@ -626,10 +633,24 @@ if __name__ == "__main__":
     # Start the persistent browser daemon
     DAEMON.start()
 
+    try:
+        max_companies = int(os.getenv("MAX_COMPANIES", "0") or 0)
+    except ValueError:
+        max_companies = 0
+    if max_companies > 0:
+        print(f"🔒 Limite : {max_companies} entreprise(s) à traiter maximum.")
+
     skipped = 0
+    processed = 0
     try:
         for idx, row in enumerate(all_rows, start=2):   # row 2 = first data row
-            name  = str(row.get("Dénomination") or row.get("Denomination") or "").strip()
+            name  = str(
+                row.get("Société")
+                or row.get("Societe")
+                or row.get("Dénomination")
+                or row.get("Denomination")
+                or ""
+            ).strip()
             siren = str(row.get("Siren") or row.get("SIREN") or "").strip()
 
             if not name:
@@ -647,9 +668,14 @@ if __name__ == "__main__":
             ws.update_cell(idx, email_col, result.get("emails", "NOT_FOUND"))
             ws.update_cell(idx, site_col,  result.get("site",   "NOT_FOUND"))
 
-            print(f"  ✅ Sheet mis à jour (ligne {idx})")
+            processed += 1
+            print(f"  ✅ Sheet mis à jour (ligne {idx})  [{processed}/{max_companies or '∞'}]")
+
+            if max_companies and processed >= max_companies:
+                print(f"\n🔒 Limite atteinte ({max_companies}). Arrêt.")
+                break
 
     finally:
         DAEMON.stop()
 
-    print(f"\n✅ Terminé. {total - skipped} entreprises traitées, {skipped} déjà renseignées.")
+    print(f"\n✅ Terminé. {processed} entreprises traitées, {skipped} déjà renseignées.")
