@@ -2,4 +2,5 @@ beautifulsoup4>=4.12
 python-dotenv>=1.0
 requests>=2.31
 groq>=0.9
+gspread>=6.0
 PySide6>=6.6

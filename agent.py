@@ -8,6 +8,7 @@ import random
 import threading
 import unicodedata
 import requests
+import gspread
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 from dotenv import load_dotenv
@@ -587,48 +588,68 @@ def process_company(name: str, siren: str) -> dict:
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    input_csv  = os.getenv("INPUT_CSV",  "input/companies.csv")
-    output_csv = os.getenv("OUTPUT_CSV", "output/results.csv")
 
-    if not os.path.exists(input_csv):
-        print(f"❌ Input file not found: {input_csv}")
-        print("   Create a TSV file with columns: company_name<TAB>siren")
+# ── Google Sheets helpers ─────────────────────────────────────────────────────
+def _connect_sheet():
+    """Authenticate and return the target worksheet."""
+    sa_file = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "credentials.json")
+    sheet_id = os.getenv("SHEET_ID")
+    onglet   = os.getenv("SHEET_ONGLET", "BODACC")
+    if not sheet_id:
+        print("❌ SHEET_ID manquant dans le .env")
         sys.exit(1)
+    gc = gspread.service_account(filename=sa_file)
+    sh = gc.open_by_key(sheet_id)
+    return sh.worksheet(onglet)
 
-    os.makedirs(os.path.dirname(output_csv), exist_ok=True)
 
-    with open(input_csv, encoding="utf-8") as f:
-        rows = [r for r in csv.reader(f, delimiter="\t") if len(r) >= 2]
+def _find_or_create_col(ws, header: str) -> int:
+    """Return 1-based column index of *header*, creating it if absent."""
+    headers = ws.row_values(1)
+    if header in headers:
+        return headers.index(header) + 1
+    new_col = len(headers) + 1
+    ws.update_cell(1, new_col, header)
+    return new_col
 
-    # Resume: skip already-processed companies
-    done: set[str] = set()
-    file_exists = os.path.exists(output_csv) and os.path.getsize(output_csv) > 0
-    if file_exists:
-        with open(output_csv, encoding="utf-8") as f:
-            for row in csv.DictReader(f):
-                done.add(row["name"])
-        print(f"Resuming: {len(done)} companies already processed.")
 
-    # Start the persistent browser daemon (ONE Chromium for the whole run)
+if __name__ == "__main__":
+    ws = _connect_sheet()
+    all_rows = ws.get_all_records()   # list of dicts (row 1 = headers)
+    total = len(all_rows)
+    print(f"📊 {total} lignes chargées depuis Google Sheets.")
+
+    # Locate/create the Email column
+    email_col = _find_or_create_col(ws, "Email")
+    site_col  = _find_or_create_col(ws, "Site")
+
+    # Start the persistent browser daemon
     DAEMON.start()
 
+    skipped = 0
     try:
-        with open(output_csv, "a", encoding="utf-8", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["name", "site", "contact", "emails"])
-            if not file_exists:
-                writer.writeheader()
+        for idx, row in enumerate(all_rows, start=2):   # row 2 = first data row
+            name  = str(row.get("Dénomination") or row.get("Denomination") or "").strip()
+            siren = str(row.get("Siren") or row.get("SIREN") or "").strip()
 
-            for r in rows:
-                name  = r[0].strip()
-                siren = r[1].strip() if len(r) > 1 else ""
-                if name in done:
-                    continue
-                result = process_company(name, siren)
-                writer.writerow(result)
-                f.flush()
-                os.fsync(f.fileno())
+            if not name:
+                continue
+
+            # Resume: skip if email already filled
+            existing_email = str(row.get("Email") or "").strip()
+            if existing_email:
+                skipped += 1
+                continue
+
+            result = process_company(name, siren)
+
+            # Write back to the sheet
+            ws.update_cell(idx, email_col, result.get("emails", "NOT_FOUND"))
+            ws.update_cell(idx, site_col,  result.get("site",   "NOT_FOUND"))
+
+            print(f"  ✅ Sheet mis à jour (ligne {idx})")
+
     finally:
         DAEMON.stop()
 
-    print(f"\n✅ Done! Results saved to {output_csv}")
+    print(f"\n✅ Terminé. {total - skipped} entreprises traitées, {skipped} déjà renseignées.")
