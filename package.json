@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "description": "Playwright Stealth scripts for website + email discovery",
   "scripts": {
-    "bing":  "node scripts/bing-search.js",
+    "bing": "node scripts/bing-search.js",
     "google": "node scripts/google-search.js",
-    "maps":  "node scripts/google-maps-website.js",
-    "html":  "node scripts/get-rendered-html.js"
+    "maps": "node scripts/google-maps-website.js",
+    "html": "node scripts/get-rendered-html.js"
   },
   "dependencies": {
     "dotenv": "^16.6.1",

@@ -56,7 +56,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
           await sleep(2000);
           break;
         }
-      } catch (_) {}
+      } catch (_) { }
     }
 
     await sleep(4000);
@@ -65,9 +65,9 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
       const links = document.querySelectorAll('a[href]');
       for (const a of links) {
         const label = (a.getAttribute('aria-label') || '').toLowerCase();
-        const text  = (a.innerText || '').toLowerCase().trim();
+        const text = (a.innerText || '').toLowerCase().trim();
         const dataItem = (a.getAttribute('data-item-id') || '').toLowerCase();
-        const href  = a.href || '';
+        const href = a.href || '';
 
         const isWebsite =
           dataItem === 'authority' ||
@@ -81,7 +81,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
         if (href.includes('google.com') || href.includes('google.fr')) continue;
 
         if (href.includes('url?q=')) {
-          try { return new URL(href).searchParams.get('q'); } catch (_) {}
+          try { return new URL(href).searchParams.get('q'); } catch (_) { }
         }
         if (href.startsWith('http')) return href;
       }
@@ -90,7 +90,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
       const auth = document.querySelector('a[data-item-id="authority"]');
       if (auth && auth.href) {
         if (auth.href.includes('url?q=')) {
-          try { return new URL(auth.href).searchParams.get('q'); } catch (_) {}
+          try { return new URL(auth.href).searchParams.get('q'); } catch (_) { }
         }
         if (!auth.href.includes('google.com')) return auth.href;
       }

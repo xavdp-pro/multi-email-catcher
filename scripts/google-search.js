@@ -40,12 +40,12 @@ async function acceptConsent(page) {
         await sleep(1000);
         return;
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 }
 
 async function extractResults(page) {
-  await page.waitForSelector('div#search, div#rso, #rcnt', { timeout: 15000 }).catch(() => {});
+  await page.waitForSelector('div#search, div#rso, #rcnt', { timeout: 15000 }).catch(() => { });
   await sleep(500);
 
   return await page.evaluate(() => {
