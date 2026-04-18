@@ -1,0 +1,17 @@
+{
+  "name": "multi-email-catcher",
+  "version": "1.0.0",
+  "description": "Playwright Stealth scripts for website + email discovery",
+  "scripts": {
+    "bing":  "node scripts/bing-search.js",
+    "google": "node scripts/google-search.js",
+    "maps":  "node scripts/google-maps-website.js",
+    "html":  "node scripts/get-rendered-html.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "playwright": "^1.45.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  }
+}
