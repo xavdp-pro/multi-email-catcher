@@ -5,15 +5,124 @@ import sys
 import json
 import time
 import random
+import threading
 import unicodedata
 import requests
-import subprocess
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 from dotenv import load_dotenv
 from groq import Groq
 
 load_dotenv(".env")
+
+# ── Persistent browser daemon ─────────────────────────────────────────────────
+class BrowserDaemon:
+    """
+    Spawns `scripts/browser-daemon.js` once and keeps it alive.
+    All Playwright operations go through this single Chromium process,
+    eliminating the ~3s browser startup cost per request.
+    """
+
+    def __init__(self):
+        self._proc = None
+        self._lock = threading.Lock()
+        self._counter = 0
+
+    def start(self):
+        if self._proc and self._proc.poll() is None:
+            return
+        print("  🚀 Starting browser daemon...")
+        self._proc = subprocess.Popen(
+            ["node", "scripts/browser-daemon.js"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            env={**os.environ, "NO_PROXY": "true"},
+        )
+        # Start stderr forwarder thread
+        threading.Thread(target=self._forward_stderr, daemon=True).start()
+        # Wait for "ready" signal
+        ready_line = self._proc.stdout.readline()
+        try:
+            msg = json.loads(ready_line)
+            if msg.get("result") == "ready":
+                print("  ✅ Browser daemon ready.")
+        except Exception:
+            pass
+
+    def _forward_stderr(self):
+        for line in self._proc.stderr:
+            print(" ", line.rstrip(), flush=True)
+
+    def call(self, cmd: dict, timeout: int = 45) -> dict:
+        """Send a command and wait for its response."""
+        with self._lock:
+            self._counter += 1
+            req_id = str(self._counter)
+            cmd["id"] = req_id
+            line = json.dumps(cmd) + "\n"
+            self._proc.stdin.write(line)
+            self._proc.stdin.flush()
+
+            deadline = time.time() + timeout
+            while time.time() < deadline:
+                out = self._proc.stdout.readline()
+                if not out:
+                    raise RuntimeError("Browser daemon stdout closed unexpectedly")
+                try:
+                    msg = json.loads(out)
+                except json.JSONDecodeError:
+                    continue
+                if msg.get("id") == req_id:
+                    return msg
+            raise TimeoutError(f"Browser daemon timeout for command: {cmd}")
+
+    def bing(self, query: str) -> list:
+        try:
+            r = self.call({"cmd": "bing", "query": query})
+            return r["result"] if r.get("ok") else []
+        except Exception as e:
+            print(f"  ⚠️  Bing daemon error: {e}")
+            return []
+
+    def google(self, query: str) -> list:
+        try:
+            r = self.call({"cmd": "google", "query": query})
+            return r["result"] if r.get("ok") else []
+        except Exception as e:
+            print(f"  ⚠️  Google daemon error: {e}")
+            return []
+
+    def maps(self, query: str) -> str | None:
+        try:
+            r = self.call({"cmd": "maps", "query": query}, timeout=35)
+            url = r.get("result") if r.get("ok") else None
+            return url if url and url != "NON_TROUVE" else None
+        except Exception as e:
+            print(f"  ⚠️  Maps daemon error: {e}")
+            return None
+
+    def html(self, url: str, timeout: int = 25) -> str:
+        try:
+            r = self.call({"cmd": "html", "url": url}, timeout=timeout)
+            return r["result"] if r.get("ok") else ""
+        except Exception as e:
+            print(f"  ⚠️  HTML daemon error: {e}")
+            return ""
+
+    def stop(self):
+        if self._proc and self._proc.poll() is None:
+            try:
+                self._proc.stdin.write(json.dumps({"id": "quit", "cmd": "quit"}) + "\n")
+                self._proc.stdin.flush()
+                self._proc.wait(timeout=5)
+            except Exception:
+                self._proc.kill()
+
+
+DAEMON = BrowserDaemon()
 
 # ── LLM config ────────────────────────────────────────────────────────────────
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
@@ -130,17 +239,9 @@ def lookup_siren_api(siren: str):
 
 # ── Search helpers ─────────────────────────────────────────────────────────────
 def _run_search_engine(engine: str, query: str, timeout: int = 45) -> list:
-    script = "scripts/bing-search.js" if engine == "bing" else "scripts/google-search.js"
-    try:
-        result = subprocess.run(
-            ["node", script, query],
-            capture_output=True, text=True, timeout=timeout,
-            env={**os.environ, "NO_PROXY": "true"},
-        )
-        return json.loads(result.stdout.strip() or "[]")
-    except Exception as e:
-        print(f"  ⚠️  {engine.capitalize()} error: {e}")
-        return []
+    if engine == "bing":
+        return DAEMON.bing(query)
+    return DAEMON.google(query)
 
 
 def _search_results_relevant(query: str, results: list) -> bool:
@@ -246,20 +347,11 @@ def llm_pick_official_site(name: str, siren: str, search_results: list):
 
 # ── Google Maps ───────────────────────────────────────────────────────────────
 def lookup_google_maps(query: str):
-    try:
-        result = subprocess.run(
-            ["node", "scripts/google-maps-website.js", query],
-            capture_output=True, text=True, timeout=35,
-        )
-        url = result.stdout.strip()
-        if url and url != "NON_TROUVE" and url.startswith("http"):
-            parsed = urlparse(url)
-            clean = f"{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip("/")
-            return clean or url
-        return None
-    except Exception as e:
-        print(f"  ⚠️  Google Maps error: {e}")
-        return None
+    url = DAEMON.maps(query)
+    if url and url.startswith("http"):
+        parsed = urlparse(url)
+        return f"{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip("/") or url
+    return None
 
 
 # ── Find official site ────────────────────────────────────────────────────────
@@ -324,13 +416,7 @@ def find_official_site(name: str, siren: str):
 
 # ── HTML / email helpers ──────────────────────────────────────────────────────
 def fetch_rendered_html(url: str, timeout: int = 25) -> str:
-    try:
-        return subprocess.run(
-            ["node", "scripts/get-rendered-html.js", url],
-            capture_output=True, text=True, timeout=timeout,
-        ).stdout
-    except Exception:
-        return ""
+    return DAEMON.html(url, timeout=timeout)
 
 
 def _clean_emails(found: list) -> list:
@@ -524,19 +610,25 @@ if __name__ == "__main__":
                 done.add(row["name"])
         print(f"Resuming: {len(done)} companies already processed.")
 
-    with open(output_csv, "a", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["name", "site", "contact", "emails"])
-        if not file_exists:
-            writer.writeheader()
+    # Start the persistent browser daemon (ONE Chromium for the whole run)
+    DAEMON.start()
 
-        for r in rows:
-            name  = r[0].strip()
-            siren = r[1].strip() if len(r) > 1 else ""
-            if name in done:
-                continue
-            result = process_company(name, siren)
-            writer.writerow(result)
-            f.flush()
-            os.fsync(f.fileno())
+    try:
+        with open(output_csv, "a", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=["name", "site", "contact", "emails"])
+            if not file_exists:
+                writer.writeheader()
+
+            for r in rows:
+                name  = r[0].strip()
+                siren = r[1].strip() if len(r) > 1 else ""
+                if name in done:
+                    continue
+                result = process_company(name, siren)
+                writer.writerow(result)
+                f.flush()
+                os.fsync(f.fileno())
+    finally:
+        DAEMON.stop()
 
     print(f"\n✅ Done! Results saved to {output_csv}")
