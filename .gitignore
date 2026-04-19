@@ -2,7 +2,9 @@
 node_modules
 node_modules/
 __pycache__/
+.pytest_cache/
 venv/
+.venv/
 *.pyc
 output/
 # Google service account credentials

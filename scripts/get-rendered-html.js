@@ -34,7 +34,7 @@ if (!url) {
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
     // Wait for JS frameworks (React, Vue, Angular) to render
-    await page.waitForTimeout(2000);
+    await new Promise((r) => setTimeout(r, 2000));
     const html = await page.content();
     console.log(html);
   } catch (err) {

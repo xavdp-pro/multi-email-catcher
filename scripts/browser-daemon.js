@@ -101,7 +101,7 @@ async function cmdBing(query) {
         if (SKIP.some(d => url.includes(d))) continue;
         const title = (c.querySelector('h2') || c.querySelector('h3'))?.innerText?.trim() || '';
         const snippetEl = c.querySelector('.b_caption p, .b_mtxt, .b_snippet');
-        const snippet = snippetEl ? snippetEl.innerText.trim().substring(0, 200) : '';
+        const snippet = snippetEl ? snippetEl.innerText.trim().substring(0, 320) : '';
         seen.add(url);
         out.push({ url, title, snippet });
         if (out.length >= 10) break;
@@ -160,7 +160,7 @@ async function cmdGoogle(query) {
         if (SKIP.some(d => url.includes(d))) continue;
         const title = el.querySelector('h3')?.innerText?.trim() || '';
         const snippet = el.querySelector('.VwiC3b, .s3v9rd, .st, span[class]')
-          ?.innerText?.trim()?.substring(0, 200) || '';
+          ?.innerText?.trim()?.substring(0, 320) || '';
         seen.add(url);
         out.push({ url, title, snippet });
         if (out.length >= 10) break;
@@ -239,7 +239,7 @@ async function cmdHtml(url) {
   try {
     log('html:', url);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
-    await page.waitForTimeout(2000);
+    await sleep(2000);
     return await page.content();
   } finally {
     await page._cleanup();

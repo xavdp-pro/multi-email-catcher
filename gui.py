@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-GUI — multi-email-catcher  (source: Google Sheets)
+GUI Qt locale — multi-email-catcher (source: Google Sheets).
+Seule interface graphique du projet (lancer sur une machine avec affichage).
 
 Panneau gauche :
   - Stats live (total / à traiter / déjà fait)

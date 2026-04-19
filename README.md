@@ -117,7 +117,11 @@ GOOGLE_SERVICE_ACCOUNT_FILE=gbsproject-xxx.json
    (email found in the JSON under `client_email`)
 
 The sheet must have at minimum these columns: **`Dénomination`** and **`Siren`**.  
-The script will auto-create **`Site`** and **`Email`** columns if they don't exist.
+The script will auto-create **`Site`**, **`Email`**, and **`URLs email`** if they don't exist.  
+**`URLs email`** est insérée **juste après `Site`** (pour la voir sans défiler). Les en-têtes sont reconnus **sans tenir compte de la casse** (`Email` / `email`).  
+Cette colonne contient **l’URL de la page où l’email a été extrait** (une seule URL en principe), ou une courte mention si l’email vient uniquement des extraits SERP sans page dédiée.
+
+Les lignes **déjà avec une valeur dans `Email`** sont ignorées : la colonne `URLs email` n’est alors pas mise à jour pour ces lignes (efface temporairement `Email` si tu veux refaire un passage).
 
 ---
 
@@ -132,24 +136,21 @@ python agent.py
 
 The script automatically **skips rows where Email is already filled** (resume-safe).
 
-### Run via web GUI (recommended)
-
-Launch the web interface — accessible from any browser on the local network:
+### Run via Qt GUI (local desktop)
 
 ```bash
-python webgui.py
+source venv/bin/activate
+python gui.py
 ```
 
-Then open: **http://\<server-ip\>:5050**
+Panneau stats, limite de test, **▶ Lancer** / **■ Arrêter**, logs en direct.  
+La config vient du `.env` (même répertoire que le projet).
 
-The GUI shows a **▶ Lancer** button on the left and **real-time logs** on the right.  
-Config is read from `.env` — no need to fill anything in the interface.
-
-### Launch GUI on a Linux desktop (if the server has a display)
+Sur Linux sans session graphique sur le serveur, lance `gui.py` depuis ta machine avec affichage (ou `DISPLAY=:0` si bureau local sur la même machine) :
 
 ```bash
-DISPLAY=:0 XAUTHORITY=/home/zaza/.Xauthority \
-  /path/to/venv/bin/python3 gui.py
+DISPLAY=:0 XAUTHORITY=/home/youruser/.Xauthority \
+  ./venv/bin/python gui.py
 ```
 
 ---
